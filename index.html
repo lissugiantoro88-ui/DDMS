@@ -69,7 +69,7 @@
             newPO: { type: 'Contract Service', poNumber: '', vendor: '', value: 0, description: '' },
             defects: [],
             newDefect: {
-                title: '', equipment: '', unitDescription: '' , location: '', phase: 'commissioning', discipline: 'Static',
+    title: '', equipment: '', unitDescription: '' , location: '', phase: 'before-oa', discipline: 'Static',
                 defectDate: '', targetDate: '', reportedBy: '', description: '',
                 rootCause: '', costEstimate: 0, responsibility: null, isCritical: false
             },
@@ -165,6 +165,13 @@
         const data = snapshot.val();
         state.defects = data ? Object.keys(data).map(key => {
             const defect = {...data[key], firebaseKey: key};
+
+// MIGRATION: Convert old phase values
+            if (['commissioning', 'startup', 'oa'].includes(defect.phase)) {
+                defect.phase = 'before-oa';
+            } else if (['fa', 'warranty'].includes(defect.phase)) {
+                defect.phase = 'pasca-oa-fa';
+            }
             if (!defect.completedSteps) defect.completedSteps = [];
             if (!defect.letters) defect.letters = [];
             if (!defect.pos) defect.pos = [];
@@ -310,12 +317,9 @@ const UNIT_OPTIONS = [
                 inProgress: state.defects.filter(d => d.status === 'In Progress').length,
                 closed: state.defects.filter(d => d.status === 'Closed').length,
                 byPhase: {
-                    commissioning: state.defects.filter(d => d.phase === 'commissioning').length,
-                    startup: state.defects.filter(d => d.phase === 'startup').length,
-                    oa: state.defects.filter(d => d.phase === 'oa').length,
-                    fa: state.defects.filter(d => d.phase === 'fa').length,
-                    warranty: state.defects.filter(d => d.phase === 'warranty').length
-                },
+    'before-oa': state.defects.filter(d => d.phase === 'before-oa' || d.phase === 'commissioning' || d.phase === 'startup' || d.phase === 'oa').length,
+    'pasca-oa-fa': state.defects.filter(d => d.phase === 'pasca-oa-fa' || d.phase === 'fa' || d.phase === 'warranty').length
+},
                 avgProgress: state.defects.length > 0 ? Math.round(state.defects.reduce((sum, d) => sum + (d.workProgress || 0), 0) / state.defects.length) : 0,
                 totalCONegative: state.defects.filter(d => d.takeoverInitiated).reduce((sum, d) => sum + (d.coNegative || 0), 0),
                 takeoverCount: state.defects.filter(d => d.takeoverInitiated).length,
@@ -1267,7 +1271,7 @@ function renderProgressBar(defect) {
                     '<td class="px-6 py-4"><div class="font-medium text-gray-900">' + d.title + '</div><div class="text-sm text-gray-500">' + d.location + '</div></td>' +
                     '<td class="px-6 py-4 text-sm">' + d.equipment + '</td>' +
                     '<td class="px-6 py-4"><span class="px-2 py-1 text-xs font-semibold rounded bg-purple-100 text-purple-800">' + (d.discipline || 'N/A') + '</span></td>' +
-                    '<td class="px-6 py-4 text-sm uppercase">' + d.phase + '</td>' +
+                    '<td class="px-6 py-4 text-sm">' + (d.phase === 'before-oa' ? 'Before OA' : d.phase === 'pasca-oa-fa' ? 'Pasca OA - FA' : d.phase.toUpperCase()) + '</td>' +
                     '<td class="px-6 py-4">' + 
                     (d.takeoverInitiated ? 
                         '<div><span class="px-3 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">🔄 Takeover</span>' +
@@ -1459,7 +1463,7 @@ function exportToPDF() {
         '</select></div>' +
                 '<div><label class="block text-sm font-semibold mb-1 text-gray-700">Location</label><input type="text" onchange="updateNewDefect(\'location\', this.value)" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"></div>' +
                 '<div><label class="block text-sm font-semibold mb-1 text-gray-700">Phase</label><select onchange="updateNewDefect(\'phase\', this.value)" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">' +
-                '<option value="commissioning">Commissioning</option><option value="startup">Start-Up</option><option value="oa">OA</option><option value="fa">FA</option><option value="warranty">Warranty</option></select></div>' +
+'<option value="before-oa">Before OA</option><option value="pasca-oa-fa">Pasca OA - FA</option></select></div>' +
                 '<div><label class="block text-sm font-semibold mb-1 text-gray-700">Discipline</label><select onchange="updateNewDefect(\'discipline\', this.value)" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">' +
                 '<option value="Static">Static</option><option value="Rotating">Rotating</option><option value="Electrical">Electrical</option><option value="Instrument">Instrument</option></select></div>' +
                 '<div><label class="block text-sm font-semibold mb-1 text-gray-700">Defect Date</label><input type="date" onchange="updateNewDefect(\'defectDate\', this.value)" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"></div>' +
@@ -1937,12 +1941,10 @@ function renderEditPOModal() {
         
         // Phase
         '<div><label class="block text-sm font-semibold mb-1 text-gray-700">Phase</label>' +
-        '<select onchange="updateEditBasicInfo(\'phase\', this.value)" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500">' +
-        '<option value="commissioning" ' + (state.editBasicInfo.phase === 'commissioning' ? 'selected' : '') + '>Commissioning</option>' +
-        '<option value="startup" ' + (state.editBasicInfo.phase === 'startup' ? 'selected' : '') + '>Start-Up</option>' +
-        '<option value="oa" ' + (state.editBasicInfo.phase === 'oa' ? 'selected' : '') + '>OA</option>' +
-        '<option value="fa" ' + (state.editBasicInfo.phase === 'fa' ? 'selected' : '') + '>FA</option>' +
-        '<option value="warranty" ' + (state.editBasicInfo.phase === 'warranty' ? 'selected' : '') + '>Warranty</option>' +
+'<select onchange="updateEditBasicInfo(\'phase\', this.value)" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500">' +
+'<option value="before-oa" ' + (state.editBasicInfo.phase === 'before-oa' ? 'selected' : '') + '>Before OA</option>' +
+'<option value="pasca-oa-fa" ' + (state.editBasicInfo.phase === 'pasca-oa-fa' ? 'selected' : '') + '>Pasca OA - FA</option>' +
+'</select></div>' +
         '</select></div>' +
         
         // Discipline
@@ -2202,9 +2204,9 @@ function renderEditPOModal() {
         if (ctx3) {
             if (window.phaseChartInstance) window.phaseChartInstance.destroy();
             window.phaseChartInstance = new Chart(ctx3, {
-                type: 'bar',
-                data: {
-                    labels: Object.keys(stats.byPhase).map(p => p.toUpperCase()),
+    type: 'bar',
+    data: {
+        labels: ['BEFORE OA', 'PASCA OA - FA'],
                     datasets: [{
                         label: 'Defects',
                         data: Object.values(stats.byPhase),
