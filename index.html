@@ -686,8 +686,16 @@ state.selectedItem.unitDescription = state.editBasicInfo.unitDescription;
                 baseDefect.ownerAction = [];
             }
             await saveDefectToFirebase(baseDefect);
-            closeAddModal();
-            alert('Defect berhasil ditambahkan');
+
+// ========== RESET FILTER ==========
+state.filterStatus = 'all';
+state.filterOwnership = 'all';
+state.searchTerm = '';
+state.activeTab = 'defects'; // Pindah ke tab Defects List
+// ==================================
+
+closeAddModal();
+alert('Defect berhasil ditambahkan');
         }
 
         async function saveDefect() {
