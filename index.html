@@ -1194,12 +1194,15 @@ function renderProgressBar(defect) {
                 '<div class="bg-white rounded-lg shadow-sm border p-6"><div class="flex gap-4">' +
                 '<input type="text" placeholder="Search by ID, Title, or Equipment..." value="' + state.searchTerm + '" oninput="setSearchTerm(this.value)" class="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">' +
                 '<select onchange="setFilter(this.value)" class="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">' +
-                '<option value="all">All Status</option><option value="Open">Open</option><option value="In Progress">In Progress</option><option value="Closed">Closed</option></select>' +
+'<option value="all" ' + (state.filterStatus === 'all' ? 'selected' : '') + '>All Status</option>' +
+'<option value="Open" ' + (state.filterStatus === 'Open' ? 'selected' : '') + '>Open</option>' +
+'<option value="In Progress" ' + (state.filterStatus === 'In Progress' ? 'selected' : '') + '>In Progress</option>' +
+'<option value="Closed" ' + (state.filterStatus === 'Closed' ? 'selected' : '') + '>Closed</option></select>' +
                 '<select onchange="setOwnershipFilter(this.value)" class="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">' +
-                '<option value="all">All Ownership</option>' +
-                '<option value="contractor">JO Responsibility</option>' +
-                '<option value="owner-original">KPB Original</option>' +
-                '<option value="takeover">Takeover from JO</option></select>' +
+'<option value="all" ' + (state.filterOwnership === 'all' ? 'selected' : '') + '>All Ownership</option>' +
+'<option value="contractor" ' + (state.filterOwnership === 'contractor' ? 'selected' : '') + '>JO Responsibility</option>' +
+'<option value="owner-original" ' + (state.filterOwnership === 'owner-original' ? 'selected' : '') + '>KPB Original</option>' +
+'<option value="takeover" ' + (state.filterOwnership === 'takeover' ? 'selected' : '') + '>Takeover from JO</option></select>' +
                 '<button onclick="openAddModal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium whitespace-nowrap">Add Defect</button>' +
                 '<div class="relative"><button onclick="document.getElementById(\'exportMenu\').classList.toggle(\'hidden\')" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium whitespace-nowrap flex items-center gap-2">' +
                 '<span>Export</span><span>▼</span></button>' +
