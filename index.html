@@ -2252,7 +2252,7 @@ function render() {
     if (!app) return;
     
     try {
-        app.innerHTML = '<div class="bg-white shadow-sm border-b"><div class="max-w-7xl mx-auto px-6 py-6">' +
+        app.innerHTML = '<div class="sticky top-0 z-50 bg-white shadow-md"><div class="max-w-7xl mx-auto px-6 py-6">' +
     '<div class="flex items-center justify-between">' +
     '<div><h1 class="text-3xl font-bold text-gray-900">D&D Management System</h1>' +
     '<p class="text-gray-600 mt-1">Defect & Deficiency Management - Flow-Based Tracking</p></div>' +
@@ -2262,10 +2262,10 @@ function render() {
     '<span class="text-sm font-semibold">Online Users:</span>' +
     '<span class="text-xl font-bold">' + onlineUsersCount + '</span>' +
     '</div></div></div></div></div>' +
-            '<div class="bg-white shadow-sm sticky top-0 z-40 border-b"><div class="max-w-7xl mx-auto"><div class="flex space-x-8 px-6">' +
+            '<div class="border-b bg-white"><div class="max-w-7xl mx-auto"><div class="flex space-x-8 px-6">' +
             '<button onclick="setActiveTab(\'dashboard\')" class="py-4 px-2 border-b-2 font-medium transition ' + (state.activeTab === 'dashboard' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700') + '">Dashboard</button>' +
             '<button onclick="setActiveTab(\'defects\')" class="py-4 px-2 border-b-2 font-medium transition ' + (state.activeTab === 'defects' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700') + '">Defects List</button>' +
-            '</div></div></div><div class="max-w-7xl mx-auto p-6 pb-20">' +
+            '</div></div></div></div><div class="max-w-7xl mx-auto p-6 pb-20">' +
             (state.activeTab === 'dashboard' ? renderDashboard() : renderDefectsList()) +
             '</div><footer class="bg-slate-900 text-slate-400 py-6 mt-12 border-t border-slate-800">' +
             '<div class="max-w-7xl mx-auto px-6 text-center">' +
