@@ -65,7 +65,30 @@
     selectedStageType: null,
     editPO: null,
     editLetter: null,                 // ← TAMBAH BARIS INI
+ // ========== TAMBAHKAN MULAI DARI SINI ==========
+    currentUserRole: 'Engineer',
+    currentUserEmail: '',
+    currentUserPosition: '',
+    currentUserDiscipline: '',
     
+    // User Management
+    showUserManagementModal: false,
+    showAddUserModal: false,
+    showEditUserModal: false,
+    users: [],
+    editUser: null,
+    newUser: {
+        name: '',
+        email: '',
+        password: '',
+        role: 'Engineer',
+        position: '',
+        discipline: 'Static'
+    },
+    userSearchTerm: '',
+    userFilterRole: 'all',
+    // ========== SAMPAI SINI =========    
+
             searchTerm: '',
             filterStatus: 'all',
             filterOwnership: 'all',
@@ -77,35 +100,78 @@
                 defectDate: '', targetDate: '', reportedBy: '', description: '',
                 rootCause: '', costEstimate: 0, responsibility: null, isCritical: false
             },
+showRCAModal: false,
+rcaData: {
+    why1: '', why2: '', why3: '', why4: '', why5: '',
+    rootCauseCategory: '',
+    correctiveActions: '',
+    preventiveActions: ''
+},
             isLoading: true,
 currentPage: 1,
     itemsPerPage: 10,
     currentUserName: 'Anonymous User'
         };
 
-        // ====================================
-        // FIREBASE AUTH & DATABASE
-        // ====================================
-        async function initAuth() {
-            return new Promise((resolve, reject) => {
-                auth.onAuthStateChanged(async (user) => {
-                    if (user) {
-                        currentUser = user;
-                        state.currentUserName = 'User-' + user.uid.substring(0, 6);
-                        resolve(user);
+       // ====================================
+// FIREBASE AUTHENTICATION - UPDATED
+// ====================================
+async function initAuth() {
+    return new Promise((resolve, reject) => {
+        auth.onAuthStateChanged(async (user) => {
+            if (user) {
+                if (user.isAnonymous) {
+                    const migrate = confirm(
+                        '⚠️ Migration Required!\n\n' +
+                        'Anonymous login is deprecated. Please create a permanent account.\n\n' +
+                        'Click OK to go to registration page.'
+                    );
+                    if (migrate) {
+                        window.location.href = 'login.html';
                     } else {
-                        try {
-                            const userCredential = await auth.signInAnonymously();
-                            currentUser = userCredential.user;
-                            state.currentUserName = 'User-' + currentUser.uid.substring(0, 6);
-                            resolve(currentUser);
-                        } catch (error) {
-                            reject(error);
+                        currentUser = user;
+                        state.currentUserName = 'Anonymous-' + user.uid.substring(0, 6);
+                        const profileSnap = await db.ref('users/' + user.uid).once('value');
+                        if (profileSnap.exists()) {
+                            const profile = profileSnap.val();
+                            state.currentUserName = profile.name;
+                            state.currentUserRole = profile.role;
+                            state.currentUserEmail = profile.email;
                         }
+                        resolve(user);
                     }
-                });
-            });
-        }
+                } else {
+                    const profileSnap = await db.ref('users/' + user.uid).once('value');
+                    if (!profileSnap.exists()) {
+                        alert('❌ User profile not found. Please register again.');
+                        await auth.signOut();
+                        window.location.replace('login.html');
+                        return;
+                    }
+                    const profile = profileSnap.val();
+                    if (!profile.isActive) {
+                        alert('❌ Your account has been deactivated. Please contact administrator.');
+                        await auth.signOut();
+                        window.location.replace('login.html');
+                        return;
+                    }
+                    currentUser = user;
+                    state.currentUserName = profile.name;
+                    state.currentUserRole = profile.role;
+                    state.currentUserEmail = profile.email;
+                    state.currentUserPosition = profile.position;
+                    state.currentUserDiscipline = profile.discipline;
+                    console.log('✅ Logged in as:', state.currentUserName, '(' + state.currentUserRole + ')');
+                    resolve(user);
+                }
+            } else {
+                // ✅ SILENT REDIRECT - NO ALERT
+                window.location.replace('login.html');
+                return;
+            }
+        });
+    });
+}
 
   // ====================================
         // ONLINE PRESENCE SYSTEM
@@ -272,6 +338,97 @@ currentPage: 1,
             return 'Rp ' + new Intl.NumberFormat('id-ID').format(amount);
         }
 
+function formatRupiah(amount) {
+    return 'Rp ' + new Intl.NumberFormat('id-ID').format(amount);
+}  // ← PENUTUP function formatRupiah
+
+// ⬇️⬇️⬇️ MULAI TAMBAH DI SINI ⬇️⬇️⬇️
+// ====================================
+// PERMISSION & ROLE FUNCTIONS
+// ====================================
+function hasPermission(action) {
+    const role = state.currentUserRole;
+    
+    const permissions = {
+        'Super Admin': ['all'],
+        'Admin': ['add-defect', 'edit-any-defect', 'delete-defect', 'manage-users', 'export-data', 'approve-takeover'],
+        'Manager': ['add-defect', 'edit-any-defect', 'view-all', 'export-data', 'approve-takeover'],
+        'Engineer': ['add-defect', 'edit-own-defect', 'view-all'],
+        'Viewer': ['view-all']
+    };
+    
+    if (!permissions[role]) return false;
+    if (permissions[role].includes('all')) return true;
+    return permissions[role].includes(action);
+}
+
+function canEditDefect(defect) {
+    if (!defect) return false;
+    
+    const role = state.currentUserRole;
+    
+    // Super Admin & Admin can edit all
+    if (role === 'Super Admin' || role === 'Admin') return true;
+    
+    // Manager can edit all
+    if (role === 'Manager') return true;
+    
+    // Engineer can only edit own defects
+    if (role === 'Engineer') {
+        return defect.createdBy === currentUser.uid;
+    }
+    
+    // Viewer cannot edit
+    return false;
+}
+
+function canDeleteDefect(defect) {
+    const role = state.currentUserRole;
+    return role === 'Super Admin' || role === 'Admin';
+}
+
+function canManageUsers() {
+    const role = state.currentUserRole;
+    return role === 'Super Admin' || role === 'Admin';
+}
+
+function canApproveTakeover() {
+    const role = state.currentUserRole;
+    return role === 'Super Admin' || role === 'Admin' || role === 'Manager';
+}
+
+function getRoleBadgeClass(role) {
+    const badges = {
+        'Super Admin': 'bg-red-100 text-red-800',
+        'Admin': 'bg-orange-100 text-orange-800',
+        'Manager': 'bg-yellow-100 text-yellow-800',
+        'Engineer': 'bg-green-100 text-green-800',
+        'Viewer': 'bg-blue-100 text-blue-800'
+    };
+    return badges[role] || 'bg-gray-100 text-gray-800';
+}
+
+// Logout function
+async function logout() {
+    if (confirm('Are you sure you want to logout?')) {
+        try {
+            await auth.signOut();
+            window.location.href = 'login.html';
+        } catch (error) {
+            console.error('Logout error:', error);
+            alert('Error logging out: ' + error.message);
+        }
+    }
+}
+// ⬆️⬆️⬆️ SAMPAI SINI ⬆️⬆️⬆️
+
+function getStats() {  // ← INI function selanjutnya yang sudah ada
+    return {
+        total: state.defects.length,
+        open: state.defects.filter(d => d.status === 'Open').length,
+        // ... dst
+    };
+}
 // Unit Description Options
 const UNIT_OPTIONS = [
     '001R - CDU Revamp',
@@ -507,6 +664,7 @@ function renderWithScrollPreserve() {
         
         // Initialize other missing properties
         if (!state.selectedItem.contractorResponse) state.selectedItem.contractorResponse = null;
+if (!state.selectedItem.rca) state.selectedItem.rca = null;
         if (!state.selectedItem.workProgress) state.selectedItem.workProgress = 0;
         if (!state.selectedItem.progressNotes) state.selectedItem.progressNotes = '';
         if (state.selectedItem.takeoverInitiated === undefined) state.selectedItem.takeoverInitiated = false;
@@ -634,6 +792,63 @@ async function updatePO() {
         function closeEditBasicInfoModal() { state.showEditBasicInfoModal = false; state.editBasicInfo = null; render(); }
         function openStageDetailModal(type) { state.showStageDetailModal = true; state.selectedStageType = type; render(); }
         function closeStageDetailModal() { state.showStageDetailModal = false; state.selectedStageType = null; render(); }
+// ========== ROOT CAUSE ANALYSIS MODAL FUNCTIONS ==========
+function openRCAModal() {
+    // Initialize RCA data from selectedItem
+    state.showRCAModal = true;
+    state.rcaData = {
+        why1: state.selectedItem.rca?.why1 || '',
+        why2: state.selectedItem.rca?.why2 || '',
+        why3: state.selectedItem.rca?.why3 || '',
+        why4: state.selectedItem.rca?.why4 || '',
+        why5: state.selectedItem.rca?.why5 || '',
+        rootCauseCategory: state.selectedItem.rca?.rootCauseCategory || '',
+        correctiveActions: state.selectedItem.rca?.correctiveActions || '',
+        preventiveActions: state.selectedItem.rca?.preventiveActions || ''
+    };
+    render();
+}
+
+function closeRCAModal() {
+    state.showRCAModal = false;
+    state.rcaData = {
+        why1: '', why2: '', why3: '', why4: '', why5: '',
+        rootCauseCategory: '', correctiveActions: '', preventiveActions: ''
+    };
+    render();
+}
+
+async function saveRCA() {
+    // Validate at least Why1 is filled
+    if (!state.rcaData.why1) {
+        alert('❌ Mohon isi minimal "Why 1" untuk Root Cause Analysis');
+        return;
+    }
+    
+    // Save RCA to selectedItem
+    if (!state.selectedItem.rca) {
+        state.selectedItem.rca = {};
+    }
+    
+    state.selectedItem.rca = { ...state.rcaData };
+    
+    // Update root cause summary
+    const whyChain = [
+        state.rcaData.why1,
+        state.rcaData.why2,
+        state.rcaData.why3,
+        state.rcaData.why4,
+        state.rcaData.why5
+    ].filter(w => w).join(' → ');
+    
+    state.selectedItem.rootCause = whyChain || state.selectedItem.rootCause;
+    
+    addHistory('Root Cause Analysis Updated', '5 Whys method applied - Category: ' + (state.rcaData.rootCauseCategory || 'Not specified'));
+    await saveDefect();
+    closeRCAModal();
+    alert('✅ Root Cause Analysis berhasil disimpan!');
+}
+// ========================================================
         function updateEditBasicInfo(field, value) { state.editBasicInfo[field] = value; }
 
         async function updateStageStatus(index, status) {
@@ -769,11 +984,29 @@ async function updateStageActualDate(index, actualDate) {
                 '<span class="px-2 py-1 text-xs font-bold rounded bg-gray-100 text-gray-700">✕ ' + summary.notRequired + '</span></div>';
         }
 
-        async function saveBasicInfo() {
-            if (!state.editBasicInfo.title || !state.editBasicInfo.equipment) {
-                alert('Mohon lengkapi Title dan Equipment');
-                return;
-            }
+async function saveBasicInfo() {
+    if (!state.editBasicInfo.title || !state.editBasicInfo.equipment) {
+        alert('Mohon lengkapi Title dan Equipment');
+        return;
+    }
+    
+    // ========== VALIDASI DATE ==========
+    if (state.editBasicInfo.defectDate && state.editBasicInfo.targetDate) {
+        const defectDate = new Date(state.editBasicInfo.defectDate);
+        const targetDate = new Date(state.editBasicInfo.targetDate);
+        if (targetDate < defectDate) {
+            alert('❌ Target Date tidak boleh lebih awal dari Defect Date!\n\nDefect Date: ' + state.editBasicInfo.defectDate + '\nTarget Date: ' + state.editBasicInfo.targetDate);
+            return;
+        }
+    }
+    
+    // ========== VALIDASI COST ESTIMATE ==========
+    if (state.editBasicInfo.costEstimate < 0) {
+        alert('❌ Cost Estimate harus bernilai positif!\n\nNilai saat ini: ' + state.editBasicInfo.costEstimate);
+        return;
+    }
+    // ====================================        
+
             state.selectedItem.title = state.editBasicInfo.title;
             state.selectedItem.equipment = state.editBasicInfo.equipment;
 state.selectedItem.unitDescription = state.editBasicInfo.unitDescription;
@@ -842,18 +1075,43 @@ state.selectedItem.unitDescription = state.editBasicInfo.unitDescription;
         }
 
         async function addDefect() {
-            if (!state.newDefect.title || !state.newDefect.equipment || !state.newDefect.responsibility) {
-                alert('Mohon lengkapi Title, Equipment, dan pilih Responsibility');
-                return;
-            }
+    if (!state.newDefect.title || !state.newDefect.equipment || !state.newDefect.responsibility) {
+        alert('Mohon lengkapi Title, Equipment, dan pilih Responsibility');
+        return;
+    }
+    
+    // ========== VALIDASI DATE ==========
+    if (state.newDefect.defectDate && state.newDefect.targetDate) {
+        const defectDate = new Date(state.newDefect.defectDate);
+        const targetDate = new Date(state.newDefect.targetDate);
+        if (targetDate < defectDate) {
+            alert('❌ Target Date tidak boleh lebih awal dari Defect Date!\n\nDefect Date: ' + state.newDefect.defectDate + '\nTarget Date: ' + state.newDefect.targetDate);
+            return;
+        }
+    }
+    
+    // ========== VALIDASI COST ESTIMATE ==========
+    if (state.newDefect.costEstimate < 0) {
+        alert('❌ Cost Estimate harus bernilai positif!\n\nNilai saat ini: ' + state.newDefect.costEstimate);
+        return;
+    }
+    // ====================================
             const maxId = state.defects.reduce((max, d) => {
                 const num = parseInt(d.id.split('-')[1]);
                 return num > max ? num : max;
             }, 0);
             const newId = 'DD-' + String(maxId + 1).padStart(3, '0');
             const baseDefect = {
-                ...state.newDefect, id: newId, status: 'Open', workProgress: 0, progressNotes: '',
-                letters: [], pos: [], takeoverInitiated: false, coNegative: 0,
+    ...state.newDefect, id: newId, status: 'Open', workProgress: 0, progressNotes: '',
+    letters: [], pos: [], takeoverInitiated: false, coNegative: 0,
+    
+    // ========== TAMBAHAN CREATOR INFO ==========
+    createdBy: currentUser.uid,
+    createdByName: state.currentUserName,
+    createdByEmail: state.currentUserEmail,
+    lastModifiedBy: currentUser.uid,
+    lastModifiedByName: state.currentUserName,
+    // ===========================================
                 contractServiceStages: getInitialContractServiceStages(),
                 materialProcurementStages: getInitialMaterialProcurementStages(),
                 history: [{ timestamp: new Date().toLocaleString('id-ID'), step: 'Defect Created', details: 'Responsibility: ' + state.newDefect.responsibility, user: state.currentUserName }]
@@ -884,7 +1142,12 @@ alert('Defect berhasil ditambahkan');
         }
 
         async function saveDefect() {
-            await saveDefectToFirebase(state.selectedItem);
+            // Update last modified info
+    state.selectedItem.lastModifiedBy = currentUser.uid;
+    state.selectedItem.lastModifiedByName = state.currentUserName;
+    state.selectedItem.updatedAt = firebase.database.ServerValue.TIMESTAMP;
+    
+    await saveDefectToFirebase(state.selectedItem);
         }
 
         function addHistory(step, details) {
@@ -1707,7 +1970,8 @@ function exportToPDF() {
                 (d.status === 'Open' ? 'text-red-800' : d.status === 'In Progress' ? 'text-yellow-800' : 'text-green-800') + '">' + d.status + '</span>' +
                 '<span class="px-3 py-1 bg-white rounded-full text-sm font-semibold ' + (d.responsibility === 'Contractor' ? 'text-orange-800' : 'text-blue-800') + '">' + (d.responsibility === 'Contractor' ? 'JO' : 'KPB') + '</span>' +
                 '<button onclick="openEditResponsibilityModal()" class="px-3 py-1 bg-purple-500 hover:bg-purple-600 rounded-full text-sm font-semibold text-white">Change Responsibility</button>' +
-                '<button onclick="openEditBasicInfoModal()" class="px-3 py-1 bg-green-500 hover:bg-green-600 rounded-full text-sm font-semibold text-white">Edit Basic Info</button></div></div>' +
+                '<button onclick="openEditBasicInfoModal()" class="px-3 py-1 bg-green-500 hover:bg-green-600 rounded-full text-sm font-semibold text-white">Edit Basic Info</button>' +
+'<button onclick="openRCAModal()" class="px-3 py-1 bg-amber-500 hover:bg-amber-600 rounded-full text-sm font-semibold text-white">🔍 Root Cause Analysis</button></div></div>' +
                 '<div class="p-6 space-y-6"><div class="bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg p-6 border">' +
                 '<div class="text-sm font-bold text-gray-700 mb-4 uppercase">Process Flow</div>' + renderProgressBar(d) + '</div>' +
                 '<div class="grid grid-cols-2 gap-4"><div class="border rounded-lg p-4"><div class="text-xs font-semibold text-gray-500 uppercase mb-2">Description</div><div class="text-sm text-gray-800">' + d.description + '</div></div>' +
@@ -2514,6 +2778,98 @@ function renderSummaryModal() {
         '</div></div></div>';
 }
 
+function renderRCAModal() {
+    if (!state.showRCAModal) return '';
+    
+    const categories = [
+        'Human Error', 
+        'Equipment Failure', 
+        'Design Flaw', 
+        'Material Defect', 
+        'Process Issue',
+        'Environmental Factor',
+        'Maintenance Issue',
+        'Other'
+    ];
+    
+    return '<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">' +
+        '<div class="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">' +
+        '<div class="px-6 py-5 bg-gradient-to-r from-amber-600 to-amber-700 text-white sticky top-0 z-10">' +
+        '<div class="flex justify-between items-center">' +
+        '<div><div class="text-2xl font-bold">🔍 Root Cause Analysis (5 Whys Method)</div>' +
+        '<div class="text-sm opacity-90 mt-1">' + state.selectedItem.id + ' - ' + state.selectedItem.title + '</div></div>' +
+        '<button onclick="closeRCAModal()" class="text-white hover:bg-amber-600 px-4 py-2 rounded font-medium">Close</button>' +
+        '</div></div>' +
+        
+        // Instructions
+        '<div class="p-6 space-y-6">' +
+        '<div class="bg-blue-50 border-2 border-blue-300 rounded-lg p-4">' +
+        '<div class="font-semibold text-blue-900 mb-2">📘 Cara Menggunakan 5 Whys Method:</div>' +
+        '<ol class="text-sm text-blue-800 space-y-1 list-decimal list-inside">' +
+        '<li>Mulai dengan mendeskripsikan masalah/defect</li>' +
+        '<li>Tanyakan "Mengapa ini terjadi?" dan isi Why 1</li>' +
+        '<li>Tanyakan lagi "Mengapa [jawaban Why 1]?" dan isi Why 2</li>' +
+        '<li>Lanjutkan sampai menemukan root cause (biasanya 3-5 kali)</li>' +
+        '<li>Identifikasi kategori dan buat action plan</li>' +
+        '</ol></div>' +
+        
+        // 5 Whys Questions
+        '<div class="space-y-4">' +
+        '<div class="bg-gradient-to-r from-red-50 to-orange-50 border-2 border-red-300 rounded-lg p-4">' +
+        '<label class="block text-sm font-bold mb-2 text-red-900">1️⃣ Why 1: Mengapa defect ini terjadi?</label>' +
+        '<textarea value="' + state.rcaData.why1 + '" onchange="state.rcaData.why1 = this.value" rows="2" placeholder="Contoh: Karena seal bocor..." class="w-full px-3 py-2 border-2 border-red-300 rounded-lg focus:ring-2 focus:ring-red-500">' + state.rcaData.why1 + '</textarea>' +
+        '</div>' +
+        
+        '<div class="bg-gradient-to-r from-orange-50 to-yellow-50 border-2 border-orange-300 rounded-lg p-4">' +
+        '<label class="block text-sm font-bold mb-2 text-orange-900">2️⃣ Why 2: Mengapa [jawaban Why 1]?</label>' +
+        '<textarea value="' + state.rcaData.why2 + '" onchange="state.rcaData.why2 = this.value" rows="2" placeholder="Contoh: Karena seal sudah aus..." class="w-full px-3 py-2 border-2 border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500">' + state.rcaData.why2 + '</textarea>' +
+        '</div>' +
+        
+        '<div class="bg-gradient-to-r from-yellow-50 to-lime-50 border-2 border-yellow-400 rounded-lg p-4">' +
+        '<label class="block text-sm font-bold mb-2 text-yellow-900">3️⃣ Why 3: Mengapa [jawaban Why 2]?</label>' +
+        '<textarea value="' + state.rcaData.why3 + '" onchange="state.rcaData.why3 = this.value" rows="2" placeholder="Contoh: Karena tidak ada preventive maintenance..." class="w-full px-3 py-2 border-2 border-yellow-400 rounded-lg focus:ring-2 focus:ring-yellow-500">' + state.rcaData.why3 + '</textarea>' +
+        '</div>' +
+        
+        '<div class="bg-gradient-to-r from-lime-50 to-green-50 border-2 border-lime-400 rounded-lg p-4">' +
+        '<label class="block text-sm font-bold mb-2 text-green-900">4️⃣ Why 4: Mengapa [jawaban Why 3]? (Optional)</label>' +
+        '<textarea value="' + state.rcaData.why4 + '" onchange="state.rcaData.why4 = this.value" rows="2" placeholder="Contoh: Karena maintenance schedule tidak diikuti..." class="w-full px-3 py-2 border-2 border-lime-400 rounded-lg focus:ring-2 focus:ring-green-500">' + state.rcaData.why4 + '</textarea>' +
+        '</div>' +
+        
+        '<div class="bg-gradient-to-r from-green-50 to-teal-50 border-2 border-green-400 rounded-lg p-4">' +
+        '<label class="block text-sm font-bold mb-2 text-green-900">5️⃣ Why 5: Mengapa [jawaban Why 4]? (Optional)</label>' +
+        '<textarea value="' + state.rcaData.why5 + '" onchange="state.rcaData.why5 = this.value" rows="2" placeholder="Contoh: Karena kurangnya resource untuk maintenance..." class="w-full px-3 py-2 border-2 border-green-400 rounded-lg focus:ring-2 focus:ring-teal-500">' + state.rcaData.why5 + '</textarea>' +
+        '</div>' +
+        '</div>' +
+        
+        // Root Cause Category
+        '<div class="border-t-2 pt-6">' +
+        '<label class="block text-sm font-bold mb-2 text-gray-900">📂 Root Cause Category</label>' +
+        '<select onchange="state.rcaData.rootCauseCategory = this.value" class="w-full px-3 py-2 border-2 rounded-lg focus:ring-2 focus:ring-amber-500">' +
+        '<option value="">-- Select Category --</option>' +
+        categories.map(cat => '<option value="' + cat + '" ' + (state.rcaData.rootCauseCategory === cat ? 'selected' : '') + '>' + cat + '</option>').join('') +
+        '</select></div>' +
+        
+        // Corrective Actions
+        '<div>' +
+        '<label class="block text-sm font-bold mb-2 text-gray-900">🔧 Corrective Actions (Immediate Fix)</label>' +
+        '<textarea value="' + state.rcaData.correctiveActions + '" onchange="state.rcaData.correctiveActions = this.value" rows="3" placeholder="Apa yang harus dilakukan untuk memperbaiki masalah ini sekarang?" class="w-full px-3 py-2 border-2 rounded-lg focus:ring-2 focus:ring-amber-500">' + state.rcaData.correctiveActions + '</textarea>' +
+        '</div>' +
+        
+        // Preventive Actions
+        '<div>' +
+        '<label class="block text-sm font-bold mb-2 text-gray-900">🛡️ Preventive Actions (Prevent Recurrence)</label>' +
+        '<textarea value="' + state.rcaData.preventiveActions + '" onchange="state.rcaData.preventiveActions = this.value" rows="3" placeholder="Apa yang harus dilakukan untuk mencegah masalah ini terulang di masa depan?" class="w-full px-3 py-2 border-2 rounded-lg focus:ring-2 focus:ring-amber-500">' + state.rcaData.preventiveActions + '</textarea>' +
+        '</div>' +
+        
+        '</div>' +
+        
+        // Footer
+        '<div class="px-6 py-4 border-t flex justify-end gap-3 bg-gray-50 sticky bottom-0">' +
+        '<button onclick="closeRCAModal()" class="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 font-medium">Cancel</button>' +
+        '<button onclick="saveRCA()" class="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-semibold">💾 Save Root Cause Analysis</button>' +
+        '</div></div></div>';
+}
+
         function renderProgressBar(defect) {
             const steps = [];
             if (defect.responsibility === 'Contractor') {
@@ -2688,10 +3044,63 @@ function render() {
     if (!app) return;
     
     try {
-        app.innerHTML = '<div class="sticky top-0 z-50 bg-white shadow-md"><div class="max-w-7xl mx-auto px-6 py-6">' +
-    '<div class="flex items-center justify-between">' +
-    '<div><h1 class="text-3xl font-bold text-gray-900">D&D Management System</h1>' +
-    '<p class="text-gray-600 mt-1">Defect & Deficiency Management - Flow-Based Tracking</p></div>' +
+        app.innerHTML =  '<div class="flex items-center justify-between">' +
+'<div><h1 class="text-3xl font-bold text-gray-900">D&D Management System</h1>' +
+'<p class="text-gray-600 mt-1">Defect & Deficiency Management - Flow-Based Tracking</p></div>' +
+
+// ========== USER MENU ==========
+'<div class="flex items-center gap-4">' +
+// Online Users Badge
+'<div class="flex items-center gap-2 bg-slate-600 text-white px-4 py-2 rounded-full shadow-lg">' +
+'<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/></svg>' +
+'<div class="flex items-center gap-2">' +
+'<span class="text-sm font-semibold">Online:</span>' +
+'<span class="text-xl font-bold">' + onlineUsersCount + '</span>' +
+'</div></div>' +
+
+// User Profile Dropdown
+'<div class="relative">' +
+'<button onclick="document.getElementById(\'user-menu\').classList.toggle(\'hidden\')" class="flex items-center gap-3 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition">' +
+'<div class="w-8 h-8 bg-blue-800 rounded-full flex items-center justify-center font-bold">' +
+state.currentUserName.charAt(0).toUpperCase() +
+'</div>' +
+'<div class="text-left">' +
+'<div class="text-sm font-bold">' + state.currentUserName + '</div>' +
+'<div class="text-xs opacity-90">' + state.currentUserRole + '</div>' +
+'</div>' +
+'<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>' +
+'</button>' +
+
+// Dropdown Menu
+'<div id="user-menu" class="hidden absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border z-50">' +
+'<div class="p-4 border-b bg-gray-50">' +
+'<div class="font-bold text-gray-900">' + state.currentUserName + '</div>' +
+'<div class="text-xs text-gray-600 mt-1">' + state.currentUserEmail + '</div>' +
+'<div class="mt-2"><span class="px-2 py-1 text-xs font-bold rounded-full ' + getRoleBadgeClass(state.currentUserRole) + '">' + state.currentUserRole + '</span></div>' +
+'</div>' +
+
+'<div class="p-2">' +
+(canManageUsers() ? 
+'<button onclick="openUserManagement()" class="w-full text-left px-4 py-2 hover:bg-gray-100 rounded flex items-center gap-2">' +
+'<svg class="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 20 20"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/></svg>' +
+'<span class="font-medium">User Management</span>' +
+'</button>' : '') +
+
+'<button onclick="window.open(\'https://console.firebase.google.com\', \'_blank\')" class="w-full text-left px-4 py-2 hover:bg-gray-100 rounded flex items-center gap-2">' +
+'<svg class="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/></svg>' +
+'<span class="font-medium">Settings</span>' +
+'</button>' +
+
+'<button onclick="logout()" class="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600 rounded flex items-center gap-2 font-medium">' +
+'<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clip-rule="evenodd"/></svg>' +
+'<span>Logout</span>' +
+'</button>' +
+'</div></div>' +
+'</div>' +
+'</div>' +
+// ========== END USER MENU ==========
+
+'</div></div></div>' +
     '<div class="flex items-center gap-2 bg-slate-600 text-white px-4 py-2 rounded-full shadow-lg">' +
     '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/></svg>' +
     '<div class="flex items-center gap-2">' +
@@ -2699,8 +3108,13 @@ function render() {
     '<span class="text-xl font-bold">' + onlineUsersCount + '</span>' +
     '</div></div></div></div></div>' +
             '<div class="border-b bg-white"><div class="max-w-7xl mx-auto"><div class="flex space-x-8 px-6">' +
-            '<button onclick="setActiveTab(\'dashboard\')" class="py-4 px-2 border-b-2 font-medium transition ' + (state.activeTab === 'dashboard' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700') + '">Dashboard</button>' +
-            '<button onclick="setActiveTab(\'defects\')" class="py-4 px-2 border-b-2 font-medium transition ' + (state.activeTab === 'defects' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700') + '">Defects List</button>' +
+'<button onclick="setActiveTab(\'dashboard\')" class="py-4 px-2 border-b-2 font-medium transition ' + (state.activeTab === 'dashboard' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700') + '">Dashboard</button>' +
+'<button onclick="setActiveTab(\'defects\')" class="py-4 px-2 border-b-2 font-medium transition ' + (state.activeTab === 'defects' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700') + '">Defects List</button>' +
+
+// ========== USERS TAB (Only for Admin/Super Admin) ==========
+(canManageUsers() ? 
+'<button onclick="setActiveTab(\'users\')" class="py-4 px-2 border-b-2 font-medium transition ' + (state.activeTab === 'users' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700') + '">Users</button>' : '') +
+// ============================================================
             '</div></div></div></div><div class="max-w-7xl mx-auto p-6 pb-20">' +
             (state.activeTab === 'dashboard' ? renderDashboard() : renderDefectsList()) +
             '</div><footer class="bg-slate-900 text-slate-400 py-6 mt-12 border-t border-slate-800">' +
@@ -2708,7 +3122,7 @@ function render() {
             '<div class="text-sm font-medium">Developed by TS-KPB</div>' +
             '<div class="text-xs mt-1 opacity-60">© 2025 All Rights Reserved</div>' +
             '</div></footer>' +
-            renderAddModal() + renderDetailModal() + renderEditResponsibilityModal() + renderEditBasicInfoModal() + renderAddLetterModal() + renderAddPOModal() + renderEditPOModal() + renderEditLetterModal() + renderStageDetailModal() + renderSummaryModal();
+            renderAddModal() + renderDetailModal() + renderEditResponsibilityModal() + renderEditBasicInfoModal() + renderAddLetterModal() + renderAddPOModal() + renderEditPOModal() + renderEditLetterModal() + renderStageDetailModal() + renderSummaryModal() + renderRCAModal();
     } catch (error) {
         console.error('Render error:', error);
         app.innerHTML = '<div style="padding: 40px; text-align: center; font-family: Arial;">' +
