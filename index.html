@@ -55,13 +55,17 @@
     showEditResponsibilityModal: false,
     showAddLetterModal: false,
     showAddPOModal: false,
-    showEditPOModal: false,  // ← TAMBAHKAN INI
+    showEditPOModal: false,
+    showEditLetterModal: false,      // ← TAMBAH BARIS INI
+    showSummaryModal: false,          // ← TAMBAH BARIS INI
     showEditBasicInfoModal: false,
     showStageDetailModal: false,
     selectedItem: null,
     editBasicInfo: null,
     selectedStageType: null,
-    editPO: null,  // ← TAMBAHKAN INI
+    editPO: null,
+    editLetter: null,                 // ← TAMBAH BARIS INI
+    
             searchTerm: '',
             filterStatus: 'all',
             filterOwnership: 'all',
@@ -469,6 +473,58 @@ function openEditPOModal(poId) {
 function closeEditPOModal() {
     state.showEditPOModal = false;
     state.editPO = null;
+    render();
+}
+
+// ========== LETTER EDIT FUNCTIONS ==========
+function openEditLetterModal(letterId) {
+    const letter = state.selectedItem.letters.find(l => l.id === letterId);
+    if (letter) {
+        state.showEditLetterModal = true;
+        state.editLetter = { ...letter };
+        render();
+    }
+}
+
+function closeEditLetterModal() {
+    state.showEditLetterModal = false;
+    state.editLetter = null;
+    render();
+}
+
+async function updateLetter() {
+    if (!state.editLetter.letterNo || !state.editLetter.subject) {
+        alert('Mohon isi Letter No dan Subject');
+        return;
+    }
+    
+    const letterIndex = state.selectedItem.letters.findIndex(l => l.id === state.editLetter.id);
+    if (letterIndex > -1) {
+        // Update from/to based on type
+        if (state.editLetter.type === 'Notification' || state.editLetter.type === 'Follow-up') {
+            state.editLetter.from = 'KPB (Owner)';
+            state.editLetter.to = 'JO (Joint Operation)';
+        } else if (state.editLetter.type === 'Response' || state.editLetter.type === 'Rejection') {
+            state.editLetter.from = 'JO (Joint Operation)';
+            state.editLetter.to = 'KPB (Owner)';
+        }
+        
+        state.selectedItem.letters[letterIndex] = { ...state.editLetter };
+        addHistory('Letter Updated', state.editLetter.type + ': ' + state.editLetter.letterNo);
+        await saveDefect();
+        closeEditLetterModal();
+        alert('Letter berhasil diupdate');
+    }
+}
+
+// ========== SUMMARY VIEW FUNCTIONS ==========
+function openSummaryModal() {
+    state.showSummaryModal = true;
+    render();
+}
+
+function closeSummaryModal() {
+    state.showSummaryModal = false;
     render();
 }
 
@@ -1500,9 +1556,13 @@ function exportToPDF() {
             return '<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">' +
                 '<div class="bg-white rounded-lg max-w-6xl w-full my-8 max-h-[95vh] overflow-y-auto">' +
                 '<div class="px-6 py-5 bg-gradient-to-r from-blue-600 to-blue-700 text-white sticky top-0 z-10 rounded-t-lg">' +
-                '<div class="flex justify-between items-start"><div><div class="text-2xl font-bold">' + d.id + '</div><div class="text-lg mt-1">' + d.title + '</div>' +
-                '<div class="text-blue-100 text-sm mt-1">' + d.equipment + ' | ' + d.location + '</div></div>' +
-                '<button onclick="closeDetailModal()" class="text-white hover:bg-blue-600 px-3 py-1 rounded font-medium">Close</button></div>' +
+'<div class="flex justify-between items-start"><div><div class="text-2xl font-bold">' + d.id + '</div><div class="text-lg mt-1">' + d.title + '</div>' +
+'<div class="text-blue-100 text-sm mt-1">' + d.equipment + ' | ' + d.location + '</div></div>' +
+'<div class="flex gap-2">' +
+'<button onclick="openSummaryModal()" class="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg font-medium text-sm flex items-center gap-2">' +
+'<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"/></svg>' +
+'Summary View</button>' +
+'<button onclick="closeDetailModal()" class="text-white hover:bg-blue-600 px-3 py-1 rounded font-medium">Close</button></div></div>' +
                 '<div class="flex gap-3 mt-4"><span class="px-3 py-1 bg-white rounded-full text-sm font-semibold ' + 
                 (d.status === 'Open' ? 'text-red-800' : d.status === 'In Progress' ? 'text-yellow-800' : 'text-green-800') + '">' + d.status + '</span>' +
                 '<span class="px-3 py-1 bg-white rounded-full text-sm font-semibold ' + (d.responsibility === 'Contractor' ? 'text-orange-800' : 'text-blue-800') + '">' + (d.responsibility === 'Contractor' ? 'JO' : 'KPB') + '</span>' +
@@ -1568,11 +1628,13 @@ function exportToPDF() {
                     '<div class="mb-4"><div class="flex justify-between items-center mb-2"><div class="text-sm font-semibold">Letters (' + d.letters.length + ')</div>' +
                     '<button onclick="openAddLetterModal()" class="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700">+ Add Letter</button></div>' +
                     (d.letters.length > 0 ? '<div class="space-y-2 max-h-40 overflow-y-auto">' + d.letters.map(l => 
-                        '<div class="bg-gray-50 p-3 rounded-lg border border-gray-200 flex justify-between items-start"><div class="flex-1">' +
-                        '<div class="font-bold text-xs">' + l.letterNo + '</div><div class="text-gray-600 text-xs mt-1">' + l.subject + '</div>' +
-                        '<div class="text-gray-500 text-xs mt-1">' + l.date + ' - ' + l.from + ' → ' + l.to + '</div></div>' +
-                        '<button onclick="deleteLetter(' + l.id + ')" class="ml-2 px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600">Del</button></div>'
-                    ).join('') + '</div>' : '<div class="text-sm text-gray-500">No letters added yet</div>') +
+    '<div class="bg-gray-50 p-3 rounded-lg border border-gray-200 flex justify-between items-start"><div class="flex-1">' +
+    '<div class="font-bold text-xs">' + l.letterNo + '</div><div class="text-gray-600 text-xs mt-1">' + l.subject + '</div>' +
+    '<div class="text-gray-500 text-xs mt-1">' + l.date + ' - ' + l.from + ' → ' + l.to + '</div></div>' +
+    '<div class="flex gap-1">' +
+    '<button onclick="openEditLetterModal(' + l.id + ')" class="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">Edit</button>' +
+    '<button onclick="deleteLetter(' + l.id + ')" class="px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600">Del</button></div></div>'
+).join('') + '</div>' : '<div class="text-sm text-gray-500">No letters added yet</div>') +
                     '</div><button onclick="notifyContractor()" class="w-full px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-semibold">Send Notification</button></div></div>';
             } else if (d.completedSteps.includes('notify-contractor')) {
                 const notificationText = d.contractorResponse === 'Accepted' && d.letters.length === 0 ? 
@@ -1589,12 +1651,14 @@ function exportToPDF() {
                     '<div class="mb-4"><div class="flex justify-between items-center mb-2"><div class="text-sm font-semibold">Response Letters (' + d.letters.filter(l => ['Response','Rejection'].includes(l.type)).length + ')</div>' +
                     '<button onclick="openAddLetterModal()" class="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700">+ Add Letter</button></div>' +
                     (d.letters.filter(l => ['Response','Rejection'].includes(l.type)).length > 0 ? '<div class="space-y-2 max-h-40 overflow-y-auto">' + 
-                        d.letters.filter(l => ['Response','Rejection'].includes(l.type)).map(l => 
-                        '<div class="bg-gray-50 p-3 rounded-lg border border-gray-200 flex justify-between items-start"><div class="flex-1">' +
-                        '<div class="font-bold text-xs">' + l.letterNo + ' - ' + l.type + '</div><div class="text-gray-600 text-xs mt-1">' + l.subject + '</div>' +
-                        '<div class="text-gray-500 text-xs mt-1">' + l.date + '</div></div>' +
-                        '<button onclick="deleteLetter(' + l.id + ')" class="ml-2 px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600">Del</button></div>'
-                    ).join('') + '</div>' : '<div class="text-sm text-gray-500">No response letters yet</div>') +
+    d.letters.filter(l => ['Response','Rejection'].includes(l.type)).map(l => 
+    '<div class="bg-gray-50 p-3 rounded-lg border border-gray-200 flex justify-between items-start"><div class="flex-1">' +
+    '<div class="font-bold text-xs">' + l.letterNo + ' - ' + l.type + '</div><div class="text-gray-600 text-xs mt-1">' + l.subject + '</div>' +
+    '<div class="text-gray-500 text-xs mt-1">' + l.date + '</div></div>' +
+    '<div class="flex gap-1">' +
+    '<button onclick="openEditLetterModal(' + l.id + ')" class="px-2 py-1 bg-blue-500 text-white rounded text-xs hover:bg-blue-600">Edit</button>' +
+    '<button onclick="deleteLetter(' + l.id + ')" class="px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600">Del</button></div></div>'
+).join('') + '</div>' : '<div class="text-sm text-gray-500">No response letters yet</div>') +
                     '</div><div class="text-xs text-gray-600 mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">' +
                     '<strong>Catatan:</strong> Jika JO tidak merespon dalam batas waktu yang ditentukan, pilih "No Response" untuk melakukan takeover otomatis.</div>' +
                     '<div class="grid grid-cols-3 gap-3">' +
@@ -1831,55 +1895,53 @@ let html = '<div class="border-2 border-blue-300 rounded-lg bg-blue-50"><div cla
             return html;
         }
 
-        function renderAddLetterModal() {
-            if (!state.showAddLetterModal) return '';
-            
-            let fromTo = '';
-            if (state.newLetter.type === 'Notification' || state.newLetter.type === 'Follow-up') {
-                fromTo = '<div class="col-span-2 p-3 bg-blue-50 border border-blue-200 rounded-lg"><div class="text-xs text-gray-600 mb-1">Direction:</div><div class="text-sm font-semibold text-blue-900">From: KPB (Owner) → To: JO (Joint Operation)</div></div>';
-            } else if (state.newLetter.type === 'Response' || state.newLetter.type === 'Rejection') {
-                fromTo = '<div class="col-span-2 p-3 bg-orange-50 border border-orange-200 rounded-lg"><div class="text-xs text-gray-600 mb-1">Direction:</div><div class="text-sm font-semibold text-orange-900">From: JO (Joint Operation) → To: KPB (Owner)</div></div>';
-            }
-            
-            return '<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">' +
-                '<div class="bg-white rounded-lg max-w-2xl w-full"><div class="px-6 py-4 bg-green-600 text-white"><div class="text-xl font-bold">Add Letter</div></div>' +
-                '<div class="p-6 space-y-4"><div class="grid grid-cols-2 gap-4">' +
-                '<div><label class="block text-sm font-semibold mb-1">Date</label><input type="date" value="' + state.newLetter.date + '" onchange="state.newLetter.date = this.value" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"></div>' +
-                '<div><label class="block text-sm font-semibold mb-1">Letter No</label><input type="text" onchange="state.newLetter.letterNo = this.value" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"></div>' +
-                '<div class="col-span-2"><label class="block text-sm font-semibold mb-1">Type</label><select onchange="state.newLetter.type = this.value; renderWithScrollPreserve();" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500">' +
-                '<option value="Notification" ' + (state.newLetter.type === 'Notification' ? 'selected' : '') + '>Notification (Owner → JO)</option>' +
-                '<option value="Response" ' + (state.newLetter.type === 'Response' ? 'selected' : '') + '>Response (JO → Owner)</option>' +
-                '<option value="Rejection" ' + (state.newLetter.type === 'Rejection' ? 'selected' : '') + '>Rejection (JO → Owner)</option>' +
-                '<option value="Follow-up" ' + (state.newLetter.type === 'Follow-up' ? 'selected' : '') + '>Follow-up (Owner → JO)</option></select></div>' +
-                fromTo +
-                '<div class="col-span-2"><label class="block text-sm font-semibold mb-1">Subject</label><input type="text" onchange="state.newLetter.subject = this.value" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"></div>' +
-                '</div></div><div class="px-6 py-4 border-t flex justify-end gap-3 bg-gray-50">' +
-                '<button onclick="closeAddLetterModal()" class="px-6 py-2 border rounded-lg hover:bg-gray-100">Cancel</button>' +
-                '<button onclick="addLetter()" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Add Letter</button></div></div></div>';
-        }
-
-        function renderAddPOModal() {
-            if (!state.showAddPOModal) return '';
-            return '<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">' +
-                '<div class="bg-white rounded-lg max-w-2xl w-full"><div class="px-6 py-4 bg-blue-600 text-white"><div class="text-xl font-bold">Add PO</div></div>' +
-                '<div class="p-6 space-y-4"><div class="grid grid-cols-2 gap-4">' +
-                '<div class="col-span-2"><label class="block text-sm font-semibold mb-1">Type</label><select value="' + state.newPO.type + '" onchange="state.newPO.type = this.value" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">' +
-                '<option>Contract Service</option><option>Material Procurement</option><option>Self Repair</option></select></div>' +
-                '<div><label class="block text-sm font-semibold mb-1">PO Number</label><input type="text" onchange="state.newPO.poNumber = this.value" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"></div>' +
-                '<div><label class="block text-sm font-semibold mb-1">Vendor</label><input type="text" onchange="state.newPO.vendor = this.value" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"></div>' +
-                '<div><label class="block text-sm font-semibold mb-1">Value (Rp)</label><input type="number" onchange="state.newPO.value = parseInt(this.value)" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"></div>' +
-                '<div><label class="block text-sm font-semibold mb-1">Description</label><input type="text" onchange="state.newPO.description = this.value" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"></div>' +
-                '</div></div><div class="px-6 py-4 border-t flex justify-end gap-3 bg-gray-50">' +
-                '<button onclick="closeAddPOModal()" class="px-6 py-2 border rounded-lg hover:bg-gray-100">Cancel</button>' +
-                '<button onclick="addPO()" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Add PO</button></div></div></div>';
-        }
+      function renderAddLetterModal() {
+    if (!state.showAddLetterModal) return '';
+    
+    let fromTo = '';
+    if (state.newLetter.type === 'Notification' || state.newLetter.type === 'Follow-up') {
+        fromTo = '<div class="col-span-2 p-3 bg-blue-50 border border-blue-200 rounded-lg"><div class="text-xs text-gray-600 mb-1">Direction:</div><div class="text-sm font-semibold text-blue-900">From: KPB (Owner) → To: JO (Joint Operation)</div></div>';
+    } else if (state.newLetter.type === 'Response' || state.newLetter.type === 'Rejection') {
+        fromTo = '<div class="col-span-2 p-3 bg-orange-50 border border-orange-200 rounded-lg"><div class="text-xs text-gray-600 mb-1">Direction:</div><div class="text-sm font-semibold text-orange-900">From: JO (Joint Operation) → To: KPB (Owner)</div></div>';
+    }
+    
+    return '<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">' +
+        '<div class="bg-white rounded-lg max-w-2xl w-full"><div class="px-6 py-4 bg-green-600 text-white"><div class="text-xl font-bold">Add Letter</div></div>' +
+        '<div class="p-6 space-y-4"><div class="grid grid-cols-2 gap-4">' +
+        '<div><label class="block text-sm font-semibold mb-1">Date</label><input type="date" value="' + state.newLetter.date + '" onchange="state.newLetter.date = this.value" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"></div>' +
+        '<div><label class="block text-sm font-semibold mb-1">Letter No</label><input type="text" onchange="state.newLetter.letterNo = this.value" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"></div>' +
+        '<div class="col-span-2"><label class="block text-sm font-semibold mb-1">Type</label><select onchange="state.newLetter.type = this.value; renderWithScrollPreserve();" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500">' +
+        '<option value="Notification" ' + (state.newLetter.type === 'Notification' ? 'selected' : '') + '>Notification (Owner → JO)</option>' +
+        '<option value="Response" ' + (state.newLetter.type === 'Response' ? 'selected' : '') + '>Response (JO → Owner)</option>' +
+        '<option value="Rejection" ' + (state.newLetter.type === 'Rejection' ? 'selected' : '') + '>Rejection (JO → Owner)</option>' +
+        '<option value="Follow-up" ' + (state.newLetter.type === 'Follow-up' ? 'selected' : '') + '>Follow-up (Owner → JO)</option></select></div>' +
+        fromTo +
+        '<div class="col-span-2"><label class="block text-sm font-semibold mb-1">Subject</label><input type="text" onchange="state.newLetter.subject = this.value" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"></div>' +
+        '</div></div><div class="px-6 py-4 border-t flex justify-end gap-3 bg-gray-50">' +
+        '<button onclick="closeAddLetterModal()" class="px-6 py-2 border rounded-lg hover:bg-gray-100">Cancel</button>' +
+        '<button onclick="addLetter()" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Add Letter</button></div></div></div>';
+}
+function renderAddPOModal() {
+    if (!state.showAddPOModal) return '';
+    return '<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">' +
+        '<div class="bg-white rounded-lg max-w-2xl w-full"><div class="px-6 py-4 bg-blue-600 text-white"><div class="text-xl font-bold">Add PO</div></div>' +
+        '<div class="p-6 space-y-4"><div class="grid grid-cols-2 gap-4">' +
+        '<div class="col-span-2"><label class="block text-sm font-semibold mb-1">Type</label><select value="' + state.newPO.type + '" onchange="state.newPO.type = this.value" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">' +
+        '<option>Contract Service</option><option>Material Procurement</option><option>Self Repair</option></select></div>' +
+        '<div><label class="block text-sm font-semibold mb-1">PO Number</label><input type="text" onchange="state.newPO.poNumber = this.value" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"></div>' +
+        '<div><label class="block text-sm font-semibold mb-1">Vendor</label><input type="text" onchange="state.newPO.vendor = this.value" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"></div>' +
+        '<div><label class="block text-sm font-semibold mb-1">Value (Rp)</label><input type="number" onchange="state.newPO.value = parseInt(this.value)" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"></div>' +
+        '<div><label class="block text-sm font-semibold mb-1">Description</label><input type="text" onchange="state.newPO.description = this.value" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"></div>' +
+        '</div></div><div class="px-6 py-4 border-t flex justify-end gap-3 bg-gray-50">' +
+        '<button onclick="closeAddPOModal()" class="px-6 py-2 border rounded-lg hover:bg-gray-100">Cancel</button>' +
+        '<button onclick="addPO()" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Add PO</button></div></div></div>';
+}
 
 function renderEditPOModal() {
     if (!state.showEditPOModal || !state.editPO) return '';
     return '<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">' +
         '<div class="bg-white rounded-lg max-w-2xl w-full">' +
-        '<div class="px-6 py-4 bg-blue-600 text-white">' +
-        '<div class="text-xl font-bold">Edit PO</div></div>' +
+        '<div class="px-6 py-4 bg-blue-600 text-white"><div class="text-xl font-bold">Edit PO</div></div>' +
         '<div class="p-6 space-y-4"><div class="grid grid-cols-2 gap-4">' +
         '<div class="col-span-2"><label class="block text-sm font-semibold mb-1">Type</label>' +
         '<select value="' + state.editPO.type + '" onchange="state.editPO.type = this.value" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">' +
@@ -1898,6 +1960,74 @@ function renderEditPOModal() {
         '<div class="px-6 py-4 border-t flex justify-end gap-3 bg-gray-50">' +
         '<button onclick="closeEditPOModal()" class="px-6 py-2 border rounded-lg hover:bg-gray-100">Cancel</button>' +
         '<button onclick="updatePO()" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Update PO</button>' +
+        '</div></div></div>';
+}
+
+function renderEditLetterModal() {
+    if (!state.showEditLetterModal || !state.editLetter) return '';
+    
+    let fromTo = '';
+    if (state.editLetter.type === 'Notification' || state.editLetter.type === 'Follow-up') {
+        fromTo = '<div class="col-span-2 p-3 bg-blue-50 border border-blue-200 rounded-lg"><div class="text-xs text-gray-600 mb-1">Direction:</div><div class="text-sm font-semibold text-blue-900">From: KPB (Owner) → To: JO (Joint Operation)</div></div>';
+    } else if (state.editLetter.type === 'Response' || state.editLetter.type === 'Rejection') {
+        fromTo = '<div class="col-span-2 p-3 bg-orange-50 border border-orange-200 rounded-lg"><div class="text-xs text-gray-600 mb-1">Direction:</div><div class="text-sm font-semibold text-orange-900">From: JO (Joint Operation) → To: KPB (Owner)</div></div>';
+    }
+    
+    return '<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">' +
+        '<div class="bg-white rounded-lg max-w-2xl w-full">' +
+        '<div class="px-6 py-4 bg-green-600 text-white"><div class="text-xl font-bold">Edit Letter</div></div>' +
+        '<div class="p-6 space-y-4"><div class="grid grid-cols-2 gap-4">' +
+        '<div><label class="block text-sm font-semibold mb-1">Date</label>' +
+        '<input type="date" value="' + state.editLetter.date + '" onchange="state.editLetter.date = this.value" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"></div>' +
+        '<div><label class="block text-sm font-semibold mb-1">Letter No</label>' +
+        '<input type="text" value="' + state.editLetter.letterNo + '" onchange="state.editLetter.letterNo = this.value" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"></div>' +
+        '<div class="col-span-2"><label class="block text-sm font-semibold mb-1">Type</label>' +
+        '<select onchange="state.editLetter.type = this.value; renderWithScrollPreserve();" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500">' +
+        '<option value="Notification" ' + (state.editLetter.type === 'Notification' ? 'selected' : '') + '>Notification (Owner → JO)</option>' +
+        '<option value="Response" ' + (state.editLetter.type === 'Response' ? 'selected' : '') + '>Response (JO → Owner)</option>' +
+        '<option value="Rejection" ' + (state.editLetter.type === 'Rejection' ? 'selected' : '') + '>Rejection (JO → Owner)</option>' +
+        '<option value="Follow-up" ' + (state.editLetter.type === 'Follow-up' ? 'selected' : '') + '>Follow-up (Owner → JO)</option></select></div>' +
+        fromTo +
+        '<div class="col-span-2"><label class="block text-sm font-semibold mb-1">Subject</label>' +
+        '<input type="text" value="' + state.editLetter.subject + '" onchange="state.editLetter.subject = this.value" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"></div>' +
+        '</div></div>' +
+        '<div class="px-6 py-4 border-t flex justify-end gap-3 bg-gray-50">' +
+        '<button onclick="closeEditLetterModal()" class="px-6 py-2 border rounded-lg hover:bg-gray-100">Cancel</button>' +
+        '<button onclick="updateLetter()" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Update Letter</button>' +
+        '</div></div></div>';
+}
+
+function renderEditLetterModal() {
+    if (!state.showEditLetterModal || !state.editLetter) return '';
+    
+    let fromTo = '';
+    if (state.editLetter.type === 'Notification' || state.editLetter.type === 'Follow-up') {
+        fromTo = '<div class="col-span-2 p-3 bg-blue-50 border border-blue-200 rounded-lg"><div class="text-xs text-gray-600 mb-1">Direction:</div><div class="text-sm font-semibold text-blue-900">From: KPB (Owner) → To: JO (Joint Operation)</div></div>';
+    } else if (state.editLetter.type === 'Response' || state.editLetter.type === 'Rejection') {
+        fromTo = '<div class="col-span-2 p-3 bg-orange-50 border border-orange-200 rounded-lg"><div class="text-xs text-gray-600 mb-1">Direction:</div><div class="text-sm font-semibold text-orange-900">From: JO (Joint Operation) → To: KPB (Owner)</div></div>';
+    }
+    
+    return '<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">' +
+        '<div class="bg-white rounded-lg max-w-2xl w-full">' +
+        '<div class="px-6 py-4 bg-green-600 text-white"><div class="text-xl font-bold">Edit Letter</div></div>' +
+        '<div class="p-6 space-y-4"><div class="grid grid-cols-2 gap-4">' +
+        '<div><label class="block text-sm font-semibold mb-1">Date</label>' +
+        '<input type="date" value="' + state.editLetter.date + '" onchange="state.editLetter.date = this.value" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"></div>' +
+        '<div><label class="block text-sm font-semibold mb-1">Letter No</label>' +
+        '<input type="text" value="' + state.editLetter.letterNo + '" onchange="state.editLetter.letterNo = this.value" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"></div>' +
+        '<div class="col-span-2"><label class="block text-sm font-semibold mb-1">Type</label>' +
+        '<select onchange="state.editLetter.type = this.value; renderWithScrollPreserve();" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500">' +
+        '<option value="Notification" ' + (state.editLetter.type === 'Notification' ? 'selected' : '') + '>Notification (Owner → JO)</option>' +
+        '<option value="Response" ' + (state.editLetter.type === 'Response' ? 'selected' : '') + '>Response (JO → Owner)</option>' +
+        '<option value="Rejection" ' + (state.editLetter.type === 'Rejection' ? 'selected' : '') + '>Rejection (JO → Owner)</option>' +
+        '<option value="Follow-up" ' + (state.editLetter.type === 'Follow-up' ? 'selected' : '') + '>Follow-up (Owner → JO)</option></select></div>' +
+        fromTo +
+        '<div class="col-span-2"><label class="block text-sm font-semibold mb-1">Subject</label>' +
+        '<input type="text" value="' + state.editLetter.subject + '" onchange="state.editLetter.subject = this.value" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500"></div>' +
+        '</div></div>' +
+        '<div class="px-6 py-4 border-t flex justify-end gap-3 bg-gray-50">' +
+        '<button onclick="closeEditLetterModal()" class="px-6 py-2 border rounded-lg hover:bg-gray-100">Cancel</button>' +
+        '<button onclick="updateLetter()" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Update Letter</button>' +
         '</div></div></div>';
 }
 
@@ -1998,6 +2128,165 @@ function renderEditPOModal() {
         '<div class="px-6 py-4 border-t flex justify-end gap-3 bg-gray-50">' +
         '<button onclick="closeEditBasicInfoModal()" class="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 font-medium">Cancel</button>' +
         '<button onclick="saveBasicInfo()" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">Save Changes</button>' +
+        '</div></div></div>';
+}
+
+function renderSummaryModal() {
+    if (!state.showSummaryModal || !state.selectedItem) return '';
+    const d = state.selectedItem;
+    
+    // Calculate summary statistics
+    const totalLetters = d.letters ? d.letters.length : 0;
+    const totalPOs = d.pos ? d.pos.length : 0;
+    const totalPOValue = d.pos ? d.pos.reduce((sum, po) => sum + (po.value || 0), 0) : 0;
+    const evidenceCount = d.evidenceAssessment && d.evidenceAssessment.evidences ? d.evidenceAssessment.evidences.length : 0;
+    
+    // Workflow stages for summary
+    let workflowStages = [];
+    if (d.responsibility === 'Contractor') {
+        workflowStages.push({ name: 'Notify Contractor', status: d.completedSteps.includes('notify-contractor') ? 'completed' : d.currentStep === 'notify-contractor' ? 'current' : 'pending' });
+        workflowStages.push({ name: 'Contractor Response', status: d.completedSteps.includes('contractor-response') ? 'completed' : d.currentStep === 'contractor-response' ? 'current' : 'pending', detail: d.contractorResponse });
+        
+        if (d.contractorResponse === 'Rejected' || d.contractorResponse === 'No Response') {
+            workflowStages.push({ name: 'Evidence & Assessment', status: d.completedSteps.includes('evidence-assessment') ? 'completed' : d.currentStep === 'evidence-assessment' ? 'current' : 'pending', detail: evidenceCount + ' evidence(s)' });
+            if (d.evidenceAssessment && d.evidenceAssessment.ownerDecision === 'force-co-negative') {
+                workflowStages.push({ name: 'Takeover', status: d.completedSteps.includes('takeover') ? 'completed' : d.currentStep === 'takeover' ? 'current' : 'pending', detail: d.takeoverInitiated ? formatRupiah(d.coNegative) : '' });
+                workflowStages.push({ name: 'Owner Action', status: d.completedSteps.includes('owner-action') ? 'completed' : d.currentStep === 'owner-action' ? 'current' : 'pending', detail: d.ownerAction ? d.ownerAction.join(', ') : '' });
+                workflowStages.push({ name: 'Proses Kontrak', status: d.completedSteps.includes('proses-kontrak') ? 'completed' : d.currentStep === 'proses-kontrak' ? 'current' : 'pending', detail: totalPOs + ' PO(s)' });
+            }
+        }
+        workflowStages.push({ name: 'Execution Progress', status: d.completedSteps.includes('execution-progress') ? 'completed' : d.currentStep === 'execution-progress' ? 'current' : 'pending', detail: (d.workProgress || 0) + '%' });
+    } else {
+        workflowStages.push({ name: 'Owner Action', status: d.completedSteps.includes('owner-action') ? 'completed' : d.currentStep === 'owner-action' ? 'current' : 'pending', detail: d.ownerAction ? d.ownerAction.join(', ') : '' });
+        workflowStages.push({ name: 'Proses Kontrak', status: d.completedSteps.includes('proses-kontrak') ? 'completed' : d.currentStep === 'proses-kontrak' ? 'current' : 'pending', detail: totalPOs + ' PO(s)' });
+        workflowStages.push({ name: 'Execution Progress', status: d.completedSteps.includes('execution-progress') ? 'completed' : d.currentStep === 'execution-progress' ? 'current' : 'pending', detail: (d.workProgress || 0) + '%' });
+    }
+    
+    return '<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">' +
+        '<div class="bg-white rounded-lg max-w-6xl w-full max-h-[95vh] overflow-y-auto">' +
+        '<div class="px-6 py-5 bg-gradient-to-r from-purple-600 to-purple-700 text-white sticky top-0 z-10">' +
+        '<div class="flex justify-between items-center">' +
+        '<div><div class="text-2xl font-bold">📋 Project Summary</div>' +
+        '<div class="text-lg mt-1">' + d.id + ' - ' + d.title + '</div></div>' +
+        '<button onclick="closeSummaryModal()" class="text-white hover:bg-purple-600 px-4 py-2 rounded font-medium">Close</button>' +
+        '</div></div>' +
+        
+        // OVERVIEW SECTION
+        '<div class="p-6 space-y-6">' +
+        '<div class="grid grid-cols-4 gap-4">' +
+        '<div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-4 text-white">' +
+        '<div class="text-xs opacity-90 uppercase tracking-wide mb-1">Status</div>' +
+        '<div class="text-2xl font-bold">' + d.status + '</div></div>' +
+        '<div class="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-4 text-white">' +
+        '<div class="text-xs opacity-90 uppercase tracking-wide mb-1">Progress</div>' +
+        '<div class="text-2xl font-bold">' + (d.workProgress || 0) + '%</div></div>' +
+        '<div class="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl p-4 text-white">' +
+        '<div class="text-xs opacity-90 uppercase tracking-wide mb-1">Responsibility</div>' +
+        '<div class="text-2xl font-bold">' + (d.responsibility === 'Contractor' ? 'JO' : 'KPB') + '</div></div>' +
+        '<div class="bg-gradient-to-br from-red-500 to-red-600 rounded-xl p-4 text-white">' +
+        '<div class="text-xs opacity-90 uppercase tracking-wide mb-1">Cost Est.</div>' +
+        '<div class="text-xl font-bold">' + formatRupiah(d.costEstimate) + '</div></div>' +
+        '</div>' +
+        
+        // BASIC INFO
+        '<div class="bg-white border rounded-xl"><div class="px-4 py-3 bg-gray-50 border-b font-semibold text-gray-900">📄 Basic Information</div>' +
+        '<div class="p-4 grid grid-cols-3 gap-4 text-sm">' +
+        '<div><div class="text-gray-600 mb-1">Equipment</div><div class="font-semibold">' + d.equipment + '</div></div>' +
+        '<div><div class="text-gray-600 mb-1">Unit Description</div><div class="font-semibold">' + (d.unitDescription || 'N/A') + '</div></div>' +
+        '<div><div class="text-gray-600 mb-1">Location</div><div class="font-semibold">' + d.location + '</div></div>' +
+        '<div><div class="text-gray-600 mb-1">Phase</div><div class="font-semibold">' + (d.phase === 'before-oa' ? 'Before OA' : 'Pasca OA - FA') + '</div></div>' +
+        '<div><div class="text-gray-600 mb-1">Discipline</div><div class="font-semibold">' + (d.discipline || 'N/A') + '</div></div>' +
+        '<div><div class="text-gray-600 mb-1">Reported By</div><div class="font-semibold">' + d.reportedBy + '</div></div>' +
+        '<div><div class="text-gray-600 mb-1">Defect Date</div><div class="font-semibold">' + d.defectDate + '</div></div>' +
+        '<div><div class="text-gray-600 mb-1">Target Date</div><div class="font-semibold">' + d.targetDate + '</div></div>' +
+        '<div><div class="text-gray-600 mb-1">Critical</div><div class="font-semibold">' + (d.isCritical ? '⚠️ YES' : 'No') + '</div></div>' +
+        '</div></div>' +
+        
+        // WORKFLOW PROGRESS
+        '<div class="bg-white border rounded-xl"><div class="px-4 py-3 bg-gray-50 border-b font-semibold text-gray-900">🔄 Workflow Progress</div>' +
+        '<div class="p-4 space-y-3">' +
+        workflowStages.map((stage, idx) => {
+            const bgColor = stage.status === 'completed' ? 'bg-green-50 border-green-300' : 
+                           stage.status === 'current' ? 'bg-blue-50 border-blue-300' : 
+                           'bg-gray-50 border-gray-300';
+            const iconColor = stage.status === 'completed' ? 'bg-green-500 text-white' : 
+                             stage.status === 'current' ? 'bg-blue-500 text-white' : 
+                             'bg-gray-400 text-white';
+            const icon = stage.status === 'completed' ? '✓' : stage.status === 'current' ? '▶' : (idx + 1);
+            
+            return '<div class="flex items-center gap-3 p-3 border-2 rounded-lg ' + bgColor + '">' +
+                '<div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ' + iconColor + '">' + icon + '</div>' +
+                '<div class="flex-1"><div class="font-semibold text-sm">' + stage.name + '</div>' +
+                (stage.detail ? '<div class="text-xs text-gray-600 mt-1">' + stage.detail + '</div>' : '') +
+                '</div></div>';
+        }).join('') +
+        '</div></div>' +
+        
+        // DOCUMENTS & LETTERS
+        '<div class="grid grid-cols-2 gap-4">' +
+        '<div class="bg-white border rounded-xl"><div class="px-4 py-3 bg-gray-50 border-b font-semibold text-gray-900">📧 Letters (' + totalLetters + ')</div>' +
+        '<div class="p-4">' +
+        (totalLetters > 0 ? '<div class="space-y-2 max-h-60 overflow-y-auto">' +
+        d.letters.map(l => 
+            '<div class="bg-gray-50 p-3 rounded-lg border"><div class="font-bold text-xs">' + l.letterNo + '</div>' +
+            '<div class="text-xs text-gray-600 mt-1">' + l.type + ' - ' + l.subject + '</div>' +
+            '<div class="text-xs text-gray-500 mt-1">' + l.date + '</div></div>'
+        ).join('') + '</div>' : '<div class="text-sm text-gray-500 text-center py-8">No letters</div>') +
+        '</div></div>' +
+        
+        // POs
+        '<div class="bg-white border rounded-xl"><div class="px-4 py-3 bg-gray-50 border-b font-semibold text-gray-900">📝 Purchase Orders (' + totalPOs + ')</div>' +
+        '<div class="p-4">' +
+        (totalPOs > 0 ? '<div class="space-y-2 max-h-60 overflow-y-auto">' +
+        d.pos.map(po => 
+            '<div class="bg-gray-50 p-3 rounded-lg border"><div class="font-bold text-xs">' + po.poNumber + '</div>' +
+            '<div class="text-xs text-gray-600 mt-1">' + po.type + ' - ' + po.vendor + '</div>' +
+            '<div class="text-xs text-blue-600 font-semibold mt-1">' + formatRupiah(po.value) + '</div></div>'
+        ).join('') + '</div>' +
+        '<div class="mt-3 pt-3 border-t"><div class="text-xs text-gray-600">Total PO Value:</div>' +
+        '<div class="text-lg font-bold text-blue-700">' + formatRupiah(totalPOValue) + '</div></div>' : 
+        '<div class="text-sm text-gray-500 text-center py-8">No POs issued</div>') +
+        '</div></div></div>' +
+        
+        // EVIDENCE (if exists)
+        (evidenceCount > 0 ? 
+        '<div class="bg-white border rounded-xl"><div class="px-4 py-3 bg-gray-50 border-b font-semibold text-gray-900">🔍 Evidence (' + evidenceCount + ')</div>' +
+        '<div class="p-4 space-y-2 max-h-60 overflow-y-auto">' +
+        d.evidenceAssessment.evidences.map(e =>
+            '<div class="bg-gray-50 p-3 rounded-lg border"><div class="font-bold text-xs text-blue-700">' + e.type + '</div>' +
+            '<div class="text-xs text-gray-700 mt-1">' + e.description + '</div>' +
+            '<div class="text-xs text-gray-500 mt-1">' + e.date + ' - ' + e.uploadedBy + '</div></div>'
+        ).join('') +
+        '</div></div>' : '') +
+        
+        // TAKEOVER INFO (if applicable)
+        (d.takeoverInitiated ? 
+        '<div class="bg-red-50 border-2 border-red-300 rounded-xl"><div class="px-4 py-3 bg-red-100 border-b font-semibold text-red-900">🔄 Takeover Information</div>' +
+        '<div class="p-4 grid grid-cols-3 gap-4">' +
+        '<div><div class="text-xs text-red-600 mb-1">CO Negative</div><div class="text-2xl font-bold text-red-700">' + formatRupiah(d.coNegative) + '</div></div>' +
+        '<div><div class="text-xs text-red-600 mb-1">Takeover Date</div><div class="font-semibold text-red-800">' + (d.takeoverDate || 'N/A') + '</div></div>' +
+        '<div><div class="text-xs text-red-600 mb-1">Basis Letter</div><div class="font-semibold text-red-800">' + (d.takeoverBasisLetter || 'N/A') + '</div></div>' +
+        '</div></div>' : '') +
+        
+        // TIMELINE HISTORY
+        '<div class="bg-white border rounded-xl"><div class="px-4 py-3 bg-gray-50 border-b font-semibold text-gray-900">📅 Timeline History</div>' +
+        '<div class="p-4 max-h-96 overflow-y-auto">' +
+        (d.history && d.history.length > 0 ? '<div class="space-y-3">' +
+        d.history.slice().reverse().map((h, index) => 
+            '<div class="flex gap-3">' +
+            '<div class="flex flex-col items-center">' +
+            '<div class="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">' + (index + 1) + '</div>' +
+            (index < d.history.length - 1 ? '<div class="w-0.5 flex-1 bg-gray-300 my-1"></div>' : '') +
+            '</div>' +
+            '<div class="flex-1 pb-4"><div class="bg-gray-50 border rounded-lg p-3">' +
+            '<div class="font-semibold text-sm text-gray-900">' + h.step + '</div>' +
+            '<div class="text-xs text-gray-600 mt-1">' + h.details + '</div>' +
+            '<div class="flex justify-between items-center mt-2 text-xs text-gray-500">' +
+            '<span>👤 ' + h.user + '</span><span>🕐 ' + h.timestamp + '</span>' +
+            '</div></div></div></div>'
+        ).join('') + '</div>' : '<div class="text-center py-8 text-gray-500">No history</div>') +
+        '</div></div>' +
+        
         '</div></div></div>';
 }
 
@@ -2279,7 +2568,7 @@ function render() {
             '<div class="text-sm font-medium">Developed by TS-KPB</div>' +
             '<div class="text-xs mt-1 opacity-60">© 2025 All Rights Reserved</div>' +
             '</div></footer>' +
-            renderAddModal() + renderDetailModal() + renderEditResponsibilityModal() + renderEditBasicInfoModal() + renderAddLetterModal() + renderAddPOModal() + renderEditPOModal() + renderStageDetailModal();
+            renderAddModal() + renderDetailModal() + renderEditResponsibilityModal() + renderEditBasicInfoModal() + renderAddLetterModal() + renderAddPOModal() + renderEditPOModal() + renderEditLetterModal() + renderStageDetailModal() + renderSummaryModal();
     } catch (error) {
         console.error('Render error:', error);
         app.innerHTML = '<div style="padding: 40px; text-align: center; font-family: Arial;">' +
